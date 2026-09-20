@@ -1,0 +1,1593 @@
+-- ══════════════════════════════════════════════════════════════════════════════
+-- KIDO HUB v51 — FIXED: Part-3 Added (Kido Hub → Part-3 → Part-1 → Part-2)
+-- PC & MOBILE SAME SIZE — UI + Kido Hub Part
+-- ══════════════════════════════════════════════════════════════════════════════
+
+local Players = game:GetService("Players")
+local RS = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+local LP = Players.LocalPlayer
+
+-- ✅ Device detection
+local IS_MOBILE = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+
+-- ==============================================================================
+-- MODULES
+-- ==============================================================================
+local EggState, PlotState, AssetsData
+pcall(function() EggState = require(RS.Client.EggState) end)
+pcall(function() PlotState = require(RS.Client.PlotState) end)
+pcall(function() AssetsData = require(RS.Data.Assets) end)
+
+-- ==============================================================================
+-- CONFIG
+-- ==============================================================================
+local CONFIG = {
+    travelSpeed = 950,
+    isStealing = false,
+    autoLoop = false,
+    afterRateWait = 1.5,
+    arriveDelay = 0.1,
+    flyHeight = 20,
+    maxStealWait = 15,
+    carryCheckInterval = 0.1,
+    rowRemoveDelay = 1.5,
+    retryDelay = 0.5,
+    autoJumpEnabled = true,
+    jumpInterval = 0.15,
+    kidoHubWait = 2,
+    kidoHubTouchRadius = 15,
+    kidoHubStayTime = 1,
+    kidoHubMaxRetries = 5,
+    lowEggHoldTime = 1.2,
+    autoRemoveCheck = 0.5,
+    partWaitTime = 1,
+    partTravelWait = 0.5,
+    partFinalWait = 1,
+}
+
+local SELECTED_TARGET = nil
+local LAST_TARGET_UID = nil
+local STEAL_THREAD = nil
+local SelectedLabel = nil
+local TargetPanel = nil
+local GoBtn = nil
+local StopBtn = nil
+local HUMAN_RENAMED = false
+local SCRIPT_ACTIVE = false
+local EGG_CACHE = {}
+local TAKEN_EGGS = {}
+
+-- ==============================================================================
+-- KIDO HUB + WAYPOINTS
+-- ==============================================================================
+local KIDO_HUB_POS = Vector3.new(523.933, 67.577, -364.146)
+local KIDO_HUB_SIZE = Vector3.new(50.056, 0.15, 139.395)
+local KIDO_HUB_ORIENTATION = Vector3.new(0, 180, 0)
+
+local PART3_POS = Vector3.new(349.933, 88.577, -364.146)
+local PART1_POS = Vector3.new(1006.957, 68.191, -364.043)
+local PART2_POS = Vector3.new(1006.957, 402.431, -364.043)
+
+local kidoHubPart = nil
+local part3 = nil
+local part1 = nil
+local part2 = nil
+
+-- ==============================================================================
+-- ✅ RESPONSIVE KIDO HUB PART (PC = CP)
+-- ==============================================================================
+local function SetupKidoHub()
+    if kidoHubPart and kidoHubPart.Parent then return kidoHubPart end
+    kidoHubPart = Workspace:FindFirstChild("Kido Hub")
+    if not kidoHubPart then
+        kidoHubPart = Instance.new("Part")
+        kidoHubPart.Name = "Kido Hub"
+        kidoHubPart.Size = KIDO_HUB_SIZE
+        kidoHubPart.Position = KIDO_HUB_POS
+        kidoHubPart.Orientation = KIDO_HUB_ORIENTATION
+        kidoHubPart.Anchored = true
+        kidoHubPart.CanCollide = true
+        kidoHubPart.Color = Color3.fromRGB(255, 0, 0)
+        kidoHubPart.Transparency = 0.4
+        kidoHubPart.Material = Enum.Material.SmoothPlastic
+        kidoHubPart.Parent = Workspace
+
+        local surfaceGui = Instance.new("SurfaceGui")
+        surfaceGui.Name = "ScriptAreaText"
+        surfaceGui.Face = Enum.NormalId.Top
+        surfaceGui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+        -- ✅ Mas mataas na PixelsPerStud sa mobile para pare-pareho ang text size
+        surfaceGui.PixelsPerStud = IS_MOBILE and 80 or 50
+        surfaceGui.Parent = kidoHubPart
+
+        local frame = Instance.new("Frame")
+        frame.Name = "Frame"
+        frame.Size = UDim2.new(1, 0, 1, 0)
+        frame.BackgroundTransparency = 1
+        frame.Parent = surfaceGui
+
+        local textLabel = Instance.new("TextLabel")
+        textLabel.Name = "TextLabel"
+        textLabel.Size = UDim2.new(0.75, 0, 0.16, 0)
+        textLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+        textLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
+        textLabel.BackgroundTransparency = 1
+        textLabel.Text = "KIDO HUB"
+        textLabel.TextScaled = true
+        textLabel.RichText = true
+        textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        textLabel.Font = Enum.Font.GothamBold
+        textLabel.Parent = frame
+
+        local stroke = Instance.new("UIStroke")
+        stroke.Thickness = 3
+        stroke.Color = Color3.fromRGB(0, 0, 0)
+        stroke.Parent = textLabel
+    end
+    return kidoHubPart
+end
+
+local function SetupPart3()
+    if part3 and part3.Parent then return part3 end
+    part3 = Workspace:FindFirstChild("Part-3")
+    if not part3 then
+        part3 = Instance.new("Part")
+        part3.Name = "Part-3"
+        part3.Size = Vector3.new(10, 1, 10)
+        part3.Position = PART3_POS
+        part3.Anchored = true
+        part3.CanCollide = false
+        part3.CanTouch = true
+        part3.Transparency = 1
+        part3.Parent = Workspace
+    end
+    return part3
+end
+
+local function SetupPart1()
+    if part1 and part1.Parent then return part1 end
+    part1 = Workspace:FindFirstChild("Part-1")
+    if not part1 then
+        part1 = Instance.new("Part")
+        part1.Name = "Part-1"
+        part1.Size = Vector3.new(10, 1, 10)
+        part1.Position = PART1_POS
+        part1.Anchored = true
+        part1.CanCollide = false
+        part1.CanTouch = true
+        part1.Transparency = 1
+        part1.Parent = Workspace
+    end
+    return part1
+end
+
+local function SetupPart2()
+    if part2 and part2.Parent then return part2 end
+    part2 = Workspace:FindFirstChild("Part-2")
+    if not part2 then
+        part2 = Instance.new("Part")
+        part2.Name = "Part-2"
+        part2.Size = Vector3.new(10, 1, 10)
+        part2.Position = PART2_POS
+        part2.Anchored = true
+        part2.CanCollide = false
+        part2.CanTouch = true
+        part2.Transparency = 1
+        part2.Parent = Workspace
+    end
+    return part2
+end
+
+SetupKidoHub()
+SetupPart3()
+SetupPart1()
+SetupPart2()
+
+-- ==============================================================================
+-- HUMANOID RENAME
+-- ==============================================================================
+local function ApplyHumanoidRename()
+    local char = LP.Character
+    if not char then return false end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health <= 0 then return false end
+
+    hum.Name = "1"
+    local clone = char["1"]:Clone()
+    clone.Parent = char
+    clone.Name = "Humanoid"
+    task.wait(0.1)
+    if char["1"] then char["1"]:Destroy() end
+    Workspace.CurrentCamera.CameraSubject = char
+
+    local animate = char:FindFirstChild("Animate")
+    if animate then
+        animate.Disabled = true
+        task.wait(0.1)
+        animate.Disabled = false
+    end
+
+    local newHum = char:FindFirstChild("Humanoid")
+    if newHum then
+        newHum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+    end
+
+    HUMAN_RENAMED = true
+    return true
+end
+
+LP.CharacterAdded:Connect(function(char)
+    HUMAN_RENAMED = false
+    SCRIPT_ACTIVE = false
+    spaceHeld = false
+    stopAutoJump()
+    CONFIG.autoLoop = false
+    CONFIG.isStealing = false
+    if STEAL_THREAD then
+        pcall(function() task.cancel(STEAL_THREAD) end)
+        STEAL_THREAD = nil
+    end
+    if GoBtn then
+        GoBtn.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
+        GoBtn.Text = "GO"
+    end
+    if TargetPanel then TargetPanel.Visible = false end
+end)
+
+-- ==============================================================================
+-- AUTO JUMP
+-- ==============================================================================
+local spaceHeld = false
+local jumpThread = nil
+
+local function getRealHumanoid(char)
+    if not char then return nil end
+    local renamed = char:FindFirstChild("1")
+    if renamed and renamed:IsA("Humanoid") then return renamed end
+    return char:FindFirstChildOfClass("Humanoid")
+end
+
+local function startAutoJump()
+    if jumpThread then
+        pcall(function() task.cancel(jumpThread) end)
+        jumpThread = nil
+    end
+    jumpThread = task.spawn(function()
+        while spaceHeld and CONFIG.autoJumpEnabled do
+            local char = LP.Character
+            if char then
+                local hum = getRealHumanoid(char)
+                if hum and hum.Health > 0 then
+                    pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end)
+                    pcall(function() hum.Jump = true end)
+                end
+            end
+            task.wait(CONFIG.jumpInterval)
+        end
+        jumpThread = nil
+    end)
+end
+
+local function stopAutoJump()
+    if jumpThread then
+        pcall(function() task.cancel(jumpThread) end)
+        jumpThread = nil
+    end
+end
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.Space then
+        spaceHeld = true
+        startAutoJump()
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input, gameProcessed)
+    if input.KeyCode == Enum.KeyCode.Space then
+        spaceHeld = false
+        stopAutoJump()
+    end
+end)
+
+-- ==============================================================================
+-- LOW EGG ARENA
+-- ==============================================================================
+local LOW_EGG_ARENA_POS = Vector3.new(949.603, 71.076, -316.05)
+
+local function SetupLowEggArena()
+    local folder = Workspace:FindFirstChild("Low value Steal")
+    if not folder then
+        folder = Instance.new("Folder")
+        folder.Name = "Low value Steal"
+        folder.Parent = Workspace
+    end
+    local part = folder:FindFirstChild("Low Egg Arena")
+    if not part then
+        part = Instance.new("Part")
+        part.Name = "Low Egg Arena"
+        part.Parent = folder
+    end
+    part.Size = Vector3.new(1, 1, 1)
+    part.Position = LOW_EGG_ARENA_POS
+    part.Anchored = true
+    part.CanCollide = false
+    part.CanTouch = true
+    part.Transparency = 1
+    return part
+end
+local LowEggArena = SetupLowEggArena()
+
+-- ==============================================================================
+-- RARITY
+-- ==============================================================================
+local RARITY_COLORS = {
+    ["Common"] = Color3.fromRGB(180, 180, 180),
+    ["Uncommon"] = Color3.fromRGB(120, 220, 120),
+    ["Rare"] = Color3.fromRGB(100, 160, 255),
+    ["SuperRare"] = Color3.fromRGB(120, 100, 255),
+    ["Epic"] = Color3.fromRGB(180, 80, 255),
+    ["Legendary"] = Color3.fromRGB(255, 180, 50),
+    ["Mythic"] = Color3.fromRGB(255, 80, 80),
+    ["Mythical"] = Color3.fromRGB(255, 80, 80),
+    ["Cosmic"] = Color3.fromRGB(180, 100, 255),
+    ["Secret"] = Color3.fromRGB(255, 100, 200),
+    ["Exotic"] = Color3.fromRGB(255, 150, 100),
+    ["Divine"] = Color3.fromRGB(255, 230, 100),
+    ["Titan"] = Color3.fromRGB(255, 50, 50),
+}
+
+-- ==============================================================================
+-- HELPERS
+-- ==============================================================================
+local function findHRP()
+    local ch = LP.Character
+    if not ch then return nil end
+    return ch:FindFirstChild("HumanoidRootPart") or ch.PrimaryPart
+end
+
+local function GetAssetsInfo(egg)
+    if not egg or not AssetsData then return nil end
+    local dir = AssetsData.Directory or AssetsData
+    local cat = tostring(egg.AssetCategory or egg.Category or egg.Name or "")
+    if dir[cat] then return dir[cat] end
+    return nil
+end
+
+local function GetEggRarityInfo(egg)
+    if not egg then return "Common" end
+    if egg.AreaId then return tostring(egg.AreaId) end
+    return "Common"
+end
+
+local function GetEggValueRaw(egg)
+    if not egg then return 0 end
+    local info = GetAssetsInfo(egg)
+    if not info then return 0 end
+    local er = tonumber(info.EarningRate) or 0
+    local scale = tonumber(egg.AssetScale) or 1
+    if scale <= 0 then scale = 1 end
+    return er * scale * 0.893
+end
+
+local function GetEggSizeRaw(egg)
+    if not egg then return 0 end
+    if egg.AssetScale then return tonumber(egg.AssetScale) or 0 end
+    return 0
+end
+
+local function FormatSize(s)
+    if not s or s == 0 then return "0.00x" end
+    return string.format("%.2fx", s)
+end
+
+local function GetEggThumbnail(egg)
+    if not egg then return nil end
+    if egg.Thumbnail and type(egg.Thumbnail) == "string" then return egg.Thumbnail end
+    local info = GetAssetsInfo(egg)
+    if info and info.Icon then return info.Icon end
+    return nil
+end
+
+local function GetSortedEggs()
+    local list = {}
+    if EggState and EggState.ReadFieldEggs then
+        local ok, snap = pcall(EggState.ReadFieldEggs)
+        if ok and snap and snap.Records then
+            for _, egg in ipairs(snap.Records) do
+                if egg.State == "Slot" and egg.BoundsCFrame and egg.Uid then
+                    if not TAKEN_EGGS[egg.Uid] then
+                        EGG_CACHE[egg.Uid] = {
+                            record = egg,
+                            score = GetEggValueRaw(egg),
+                            rarity = GetEggRarityInfo(egg),
+                            size = GetEggSizeRaw(egg),
+                            thumb = GetEggThumbnail(egg),
+                            lastCFrame = egg.BoundsCFrame,
+                        }
+                        table.insert(list, EGG_CACHE[egg.Uid])
+                    end
+                end
+            end
+        end
+    end
+    table.sort(list, function(a, b) return a.score > b.score end)
+    return list
+end
+
+local function IsEggCarried(eggUid)
+    if not eggUid then return false end
+    if not EggState or not EggState.ReadFieldEggs then return false end
+    local ok, snap = pcall(EggState.ReadFieldEggs)
+    if not ok or not snap or not snap.Records then return false end
+    for _, r in ipairs(snap.Records) do
+        if r.Uid == eggUid then
+            if r.State == "Carried" or r.State == "Carry" then
+                return true
+            end
+            return false
+        end
+    end
+    return false
+end
+
+local function FindEggByUid(uid)
+    if not uid then return nil end
+    if not EggState or not EggState.ReadFieldEggs then return nil end
+    local ok, snap = pcall(EggState.ReadFieldEggs)
+    if not ok or not snap or not snap.Records then return nil end
+    for _, r in ipairs(snap.Records) do
+        if r.Uid == uid then return r end
+    end
+    return nil
+end
+
+local function GetTargetRecord(uid)
+    if not uid then return nil end
+    local fresh = FindEggByUid(uid)
+    if fresh then return fresh end
+    if EGG_CACHE[uid] then return EGG_CACHE[uid].record end
+    if SELECTED_TARGET and SELECTED_TARGET.record and SELECTED_TARGET.record.Uid == uid then
+        return SELECTED_TARGET.record
+    end
+    return nil
+end
+
+local function GetTargetPosition(uid)
+    if not uid then return nil end
+    local fresh = FindEggByUid(uid)
+    if fresh and fresh.BoundsCFrame then return fresh.BoundsCFrame end
+    if EGG_CACHE[uid] and EGG_CACHE[uid].lastCFrame then return EGG_CACHE[uid].lastCFrame end
+    if SELECTED_TARGET and SELECTED_TARGET.record and SELECTED_TARGET.record.Uid == uid then
+        return SELECTED_TARGET.record.BoundsCFrame
+    end
+    return nil
+end
+
+-- ==============================================================================
+-- STOP
+-- ==============================================================================
+local function StopAuto()
+    CONFIG.autoLoop = false
+    CONFIG.isStealing = false
+    if STEAL_THREAD then
+        pcall(function() task.cancel(STEAL_THREAD) end)
+        STEAL_THREAD = nil
+    end
+    if TargetPanel then TargetPanel.Visible = false end
+    if GoBtn then
+        GoBtn.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
+        GoBtn.Text = "GO"
+    end
+end
+
+-- ==============================================================================
+-- TRAVEL
+-- ==============================================================================
+local function TravelTo(targetPos, speed)
+    local hrp = findHRP()
+    if not hrp or not targetPos then return false end
+    local start = hrp.Position
+    local dist = (targetPos - start).Magnitude
+    if dist < 1.5 then return true end
+    speed = math.clamp(tonumber(speed) or CONFIG.travelSpeed, 50, 2000)
+    local moveTime = math.max(dist / speed, 0.02)
+    local t0 = os.clock()
+    while os.clock() - t0 < moveTime do
+        RunService.Heartbeat:Wait()
+        local char = LP.Character
+        if not char then return false end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hum or hum.Health <= 0 then return false end
+        local a = math.clamp((os.clock() - t0) / moveTime, 0, 1)
+        local cur = start:Lerp(targetPos, a)
+        local delta = targetPos - start
+        local lookDir = delta.Magnitude > 0.001 and delta.Unit or Vector3.new(1, 0, 0)
+        hrp.CFrame = CFrame.lookAt(cur, cur + lookDir)
+        hrp.AssemblyLinearVelocity = Vector3.zero
+        hrp.AssemblyAngularVelocity = Vector3.zero
+    end
+    hrp.CFrame = CFrame.new(targetPos)
+    hrp.AssemblyLinearVelocity = Vector3.zero
+    hrp.AssemblyAngularVelocity = Vector3.zero
+    return true
+end
+
+local function AscendInstant(height)
+    local hrp = findHRP()
+    if not hrp then return false end
+    local upPos = hrp.Position + Vector3.new(0, height, 0)
+    hrp.CFrame = CFrame.new(upPos)
+    hrp.AssemblyLinearVelocity = Vector3.zero
+    hrp.AssemblyAngularVelocity = Vector3.zero
+    return true
+end
+
+local function IsTouchingKidoHub()
+    local hrp = findHRP()
+    if not hrp then return false end
+    local dist = (hrp.Position - KIDO_HUB_POS).Magnitude
+    return dist <= CONFIG.kidoHubTouchRadius
+end
+
+-- ==============================================================================
+-- PROXIMITY PROMPT
+-- ==============================================================================
+local function FireProximityPromptSafe(prompt)
+    if not prompt or not prompt.Parent then return false end
+    local holdDur = prompt.HoldDuration or 0
+    if holdDur <= 0 then holdDur = 0.1 end
+    local fired = false
+    pcall(function()
+        if fireproximityprompt then
+            fireproximityprompt(prompt)
+            fired = true
+        end
+    end)
+    if fired then return true end
+    local ok = pcall(function() prompt:InputHoldBegin() end)
+    if not ok then return false end
+    task.wait(holdDur + 0.05)
+    pcall(function() prompt:InputHoldEnd() end)
+    return true
+end
+
+local function FireAllPromptsNear(position, radius)
+    radius = radius or 25
+    local fired = 0
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA("ProximityPrompt") and obj.Enabled then
+            local ppPos = nil
+            local parent = obj.Parent
+            if parent then
+                if parent:IsA("BasePart") then ppPos = parent.Position
+                elseif parent:IsA("Model") and parent.PrimaryPart then ppPos = parent.PrimaryPart.Position
+                end
+            end
+            if ppPos and (ppPos - position).Magnitude <= radius then
+                FireProximityPromptSafe(obj)
+                fired = fired + 1
+            end
+        end
+    end
+    return fired
+end
+
+local function HasActivePromptNear(position, radius)
+    radius = radius or 25
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA("ProximityPrompt") and obj.Enabled then
+            local ppPos = nil
+            local parent = obj.Parent
+            if parent then
+                if parent:IsA("BasePart") then ppPos = parent.Position
+                elseif parent:IsA("Model") and parent.PrimaryPart then ppPos = parent.PrimaryPart.Position
+                end
+            end
+            if ppPos and (ppPos - position).Magnitude <= radius then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- ==============================================================================
+-- CARRY
+-- ==============================================================================
+local function CarryEgg(record)
+    if not record or not record.Uid then return false end
+    local slotKey = nil
+    if record.AreaId and record.NestId then
+        slotKey = record.AreaId .. ":" .. record.NestId
+    end
+    local success = false
+    pcall(function()
+        if EggState and EggState.CarryFieldEgg then
+            EggState.CarryFieldEgg(record.Uid, slotKey)
+            success = true
+        end
+    end)
+    if not success then
+        pcall(function()
+            if EggState and EggState.CarryFieldEgg then
+                EggState.CarryFieldEgg(slotKey, record.Uid)
+                success = true
+            end
+        end)
+    end
+    if not success then
+        pcall(function()
+            if EggState and EggState.CarryFieldEgg then
+                EggState.CarryFieldEgg(record)
+                success = true
+            end
+        end)
+    end
+    return success
+end
+
+-- ==============================================================================
+-- SCREEN GUI + RESPONSIVE UI SCALE
+-- ==============================================================================
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "KidoHubUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.DisplayOrder = 999999
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = LP:WaitForChild("PlayerGui")
+
+task.spawn(function()
+    while ScreenGui.Parent do
+        if ScreenGui.DisplayOrder < 999999 then
+            ScreenGui.DisplayOrder = 999999
+        end
+        task.wait(1)
+    end
+end)
+
+-- ✅ UIScale para pare-pareho ang laki sa PC at CP
+local UIScale = Instance.new("UIScale")
+UIScale.Name = "ResponsiveScale"
+UIScale.Parent = ScreenGui
+
+local BASE_VIEWPORT = Vector2.new(1280, 720)
+
+local function updateUIScale()
+    local cam = Workspace.CurrentCamera
+    if not cam then return end
+    local vp = cam.ViewportSize
+    local scaleX = vp.X / BASE_VIEWPORT.X
+    local scaleY = vp.Y / BASE_VIEWPORT.Y
+    local s = math.min(scaleX, scaleY)
+    s = math.clamp(s, 0.65, 1.15)
+    UIScale.Scale = s
+
+    -- ✅ I-update din ang Kido Hub SurfaceGui base sa viewport
+    if kidoHubPart and kidoHubPart.Parent then
+        local sg = kidoHubPart:FindFirstChild("ScriptAreaText")
+        if sg then
+            local inverseScale = math.clamp(1 / s, 0.85, 1.55)
+            sg.PixelsPerStud = 50 * inverseScale
+        end
+    end
+end
+
+updateUIScale()
+
+local function hookCamera()
+    local cam = Workspace.CurrentCamera
+    if not cam then return end
+    cam:GetPropertyChangedSignal("ViewportSize"):Connect(updateUIScale)
+end
+
+hookCamera()
+Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+    task.wait(0.1)
+    hookCamera()
+    updateUIScale()
+end)
+
+-- ==============================================================================
+-- TARGET PANEL
+-- ==============================================================================
+local function CreateTargetPanel()
+    if TargetPanel and TargetPanel.Parent then TargetPanel:Destroy() end
+    local panel = Instance.new("Frame")
+    panel.Name = "TargetPanel"
+    panel.Size = UDim2.new(0, 340, 0, 150)
+    panel.Position = UDim2.new(0.5, -170, 0, 20)
+    panel.BackgroundColor3 = Color3.fromRGB(15, 12, 20)
+    panel.BorderSizePixel = 0
+    panel.ZIndex = 100
+    panel.Parent = ScreenGui
+    panel.Visible = false
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 14)
+    corner.Parent = panel
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(255, 60, 60)
+    stroke.Thickness = 2
+    stroke.Parent = panel
+
+    local headerFrame = Instance.new("Frame")
+    headerFrame.Size = UDim2.new(1, -20, 0, 28)
+    headerFrame.Position = UDim2.new(0, 10, 0, 8)
+    headerFrame.BackgroundColor3 = Color3.fromRGB(25, 20, 35)
+    headerFrame.ZIndex = 101
+    headerFrame.Parent = panel
+
+    local headerCorner = Instance.new("UICorner")
+    headerCorner.CornerRadius = UDim.new(0, 8)
+    headerCorner.Parent = headerFrame
+
+    local headerLbl = Instance.new("TextLabel")
+    headerLbl.Size = UDim2.new(1, 0, 1, 0)
+    headerLbl.BackgroundTransparency = 1
+    headerLbl.Text = "Kido Hub target"
+    headerLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+    headerLbl.Font = Enum.Font.GothamBlack
+    headerLbl.TextSize = 14
+    headerLbl.ZIndex = 102
+    headerLbl.Parent = headerFrame
+
+    local thumbFrame = Instance.new("Frame")
+    thumbFrame.Name = "ThumbFrame"
+    thumbFrame.Size = UDim2.new(0, 80, 0, 80)
+    thumbFrame.Position = UDim2.new(0, 12, 0, 44)
+    thumbFrame.BackgroundColor3 = Color3.fromRGB(30, 25, 40)
+    thumbFrame.ZIndex = 101
+    thumbFrame.Parent = panel
+
+    local thumbCorner = Instance.new("UICorner")
+    thumbCorner.CornerRadius = UDim.new(0, 10)
+    thumbCorner.Parent = thumbFrame
+
+    local thumbImg = Instance.new("ImageLabel")
+    thumbImg.Name = "ThumbImg"
+    thumbImg.Size = UDim2.new(1, -6, 1, -6)
+    thumbImg.Position = UDim2.new(0, 3, 0, 3)
+    thumbImg.BackgroundTransparency = 1
+    thumbImg.Image = ""
+    thumbImg.ZIndex = 102
+    thumbImg.Parent = thumbFrame
+
+    local nameLbl = Instance.new("TextLabel")
+    nameLbl.Name = "NameLbl"
+    nameLbl.Size = UDim2.new(1, -110, 0, 24)
+    nameLbl.Position = UDim2.new(0, 104, 0, 44)
+    nameLbl.BackgroundTransparency = 1
+    nameLbl.Text = "Egg Name"
+    nameLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+    nameLbl.Font = Enum.Font.GothamBold
+    nameLbl.TextSize = 16
+    nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+    nameLbl.ZIndex = 102
+    nameLbl.Parent = panel
+
+    local sizeLbl = Instance.new("TextLabel")
+    sizeLbl.Name = "SizeLbl"
+    sizeLbl.Size = UDim2.new(1, -110, 0, 24)
+    sizeLbl.Position = UDim2.new(0, 104, 0, 78)
+    sizeLbl.BackgroundTransparency = 1
+    sizeLbl.Text = "SIZE: 0.00x"
+    sizeLbl.TextColor3 = Color3.fromRGB(80, 180, 255)
+    sizeLbl.Font = Enum.Font.GothamBold
+    sizeLbl.TextSize = 14
+    sizeLbl.TextXAlignment = Enum.TextXAlignment.Left
+    sizeLbl.ZIndex = 102
+    sizeLbl.Parent = panel
+
+    TargetPanel = panel
+end
+
+local function ShowTargetPanel(entry)
+    if not TargetPanel or not TargetPanel.Parent then CreateTargetPanel() end
+    TargetPanel.Visible = true
+    local thumbImg = TargetPanel:FindFirstChild("ThumbFrame") and TargetPanel.ThumbFrame:FindFirstChild("ThumbImg")
+    local nameLbl = TargetPanel:FindFirstChild("NameLbl")
+    local sizeLbl = TargetPanel:FindFirstChild("SizeLbl")
+    if thumbImg then thumbImg.Image = entry.thumb or "" end
+    if nameLbl then nameLbl.Text = entry.record.AssetCategory or "Egg" end
+    if sizeLbl then sizeLbl.Text = "SIZE: " .. FormatSize(entry.size) end
+end
+
+CreateTargetPanel()
+
+-- ==============================================================================
+-- FORWARD DECLARATIONS
+-- ==============================================================================
+local listRows = {}
+local CreateEggRow
+
+-- ==============================================================================
+-- STEAL FLOW
+-- ==============================================================================
+local function StealBestEgg(targetRecord)
+    if CONFIG.isStealing then return false end
+    CONFIG.isStealing = true
+
+    local char = LP.Character
+    if not char then CONFIG.isStealing = false return false end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health <= 0 then CONFIG.isStealing = false return false end
+    local hrp = findHRP()
+    if not hrp then CONFIG.isStealing = false return false end
+
+    local targetUid = nil
+    local finalTarget = nil
+
+    if SELECTED_TARGET and SELECTED_TARGET.record and SELECTED_TARGET.record.Uid then
+        targetUid = SELECTED_TARGET.record.Uid
+        finalTarget = GetTargetRecord(targetUid) or SELECTED_TARGET.record
+    else
+        if not targetRecord then
+            local sorted = GetSortedEggs()
+            if #sorted > 0 then targetRecord = sorted[1].record end
+        end
+        finalTarget = targetRecord
+        if finalTarget then targetUid = finalTarget.Uid end
+    end
+
+    if not finalTarget or not targetUid then
+        CONFIG.isStealing = false
+        return false
+    end
+
+    if LowEggArena and LowEggArena.Parent then
+        TravelTo(LowEggArena.Position, CONFIG.travelSpeed)
+        task.wait(0.3)
+        FireAllPromptsNear(LowEggArena.Position, 25)
+
+        local holdTimer = CONFIG.lowEggHoldTime
+        local holdStart = os.clock()
+
+        while (os.clock() - holdStart) < holdTimer do
+            if not CONFIG.autoLoop then
+                CONFIG.isStealing = false
+                return false
+            end
+
+            local holding = HasActivePromptNear(LowEggArena.Position, 25)
+
+            if holding then
+                task.wait(0.1)
+            else
+                holdStart = os.clock()
+                task.wait(0.1)
+            end
+        end
+
+        task.wait(CONFIG.afterRateWait)
+    end
+
+    if not LP.Character or not LP.Character:FindFirstChildOfClass("Humanoid") or LP.Character:FindFirstChildOfClass("Humanoid").Health <= 0 then
+        CONFIG.isStealing = false
+        return false
+    end
+
+    local lastKnownCFrame = GetTargetPosition(targetUid)
+    if not lastKnownCFrame then
+        TAKEN_EGGS[targetUid] = true
+        if listRows[targetUid] then
+            listRows[targetUid]:Destroy()
+            listRows[targetUid] = nil
+        end
+        CONFIG.isStealing = false
+        return false
+    end
+
+    local liveRecord = FindEggByUid(targetUid)
+    if liveRecord then finalTarget = liveRecord end
+
+    TravelTo(lastKnownCFrame.Position, CONFIG.travelSpeed)
+    task.wait(CONFIG.arriveDelay)
+
+    local carried = false
+    local waitStart = os.clock()
+
+    while not carried do
+        if not LP.Character or not LP.Character:FindFirstChildOfClass("Humanoid") or LP.Character:FindFirstChildOfClass("Humanoid").Health <= 0 then
+            CONFIG.isStealing = false
+            return false
+        end
+        if not CONFIG.autoLoop then
+            CONFIG.isStealing = false
+            return false
+        end
+
+        CarryEgg(finalTarget)
+        task.wait(CONFIG.carryCheckInterval)
+
+        if IsEggCarried(targetUid) then
+            carried = true
+            break
+        end
+
+        local newPos = GetTargetPosition(targetUid)
+        if newPos then
+            local hrpNow = findHRP()
+            if hrpNow then
+                local dist = (hrpNow.Position - newPos.Position).Magnitude
+                if dist > 5 then
+                    TravelTo(newPos.Position, CONFIG.travelSpeed)
+                end
+            end
+        end
+
+        local fresh = FindEggByUid(targetUid)
+        if fresh then finalTarget = fresh end
+
+        if (os.clock() - waitStart) > CONFIG.maxStealWait then
+            TAKEN_EGGS[targetUid] = true
+            if listRows[targetUid] then
+                listRows[targetUid]:Destroy()
+                listRows[targetUid] = nil
+            end
+
+            CONFIG.isStealing = false
+            task.wait(CONFIG.retryDelay)
+            return false
+        end
+    end
+
+    if carried then
+        TAKEN_EGGS[targetUid] = true
+
+        if TargetPanel then TargetPanel.Visible = false end
+
+        task.spawn(function()
+            task.wait(CONFIG.rowRemoveDelay)
+            if listRows[targetUid] then
+                listRows[targetUid]:Destroy()
+                listRows[targetUid] = nil
+            end
+        end)
+
+        AscendInstant(CONFIG.flyHeight)
+        local currentPos = findHRP() and findHRP().Position or KIDO_HUB_POS
+        local kidoHubHigh = Vector3.new(KIDO_HUB_POS.X, currentPos.Y, KIDO_HUB_POS.Z)
+        TravelTo(kidoHubHigh, CONFIG.travelSpeed)
+        TravelTo(KIDO_HUB_POS + Vector3.new(0, 3, 0), CONFIG.travelSpeed)
+
+        local kidoHubAttempts = 0
+
+        while CONFIG.autoLoop and kidoHubAttempts < CONFIG.kidoHubMaxRetries do
+            kidoHubAttempts = kidoHubAttempts + 1
+
+            local touchConfirmed = false
+            local touchTimer = CONFIG.kidoHubWait
+            local touchStart = os.clock()
+
+            while (os.clock() - touchStart) < touchTimer do
+                if not CONFIG.autoLoop then
+                    CONFIG.isStealing = false
+                    return false
+                end
+
+                if IsTouchingKidoHub() then
+                    touchConfirmed = true
+                    break
+                end
+
+                task.wait(0.05)
+            end
+
+            if touchConfirmed then
+                if TargetPanel then TargetPanel.Visible = false end
+
+                local stayStart = os.clock()
+                while (os.clock() - stayStart) < CONFIG.kidoHubStayTime do
+                    if not CONFIG.autoLoop then
+                        CONFIG.isStealing = false
+                        return false
+                    end
+
+                    local hrp = findHRP()
+                    if hrp then
+                        hrp.CFrame = CFrame.new(KIDO_HUB_POS + Vector3.new(0, 3, 0))
+                        hrp.AssemblyLinearVelocity = Vector3.zero
+                        hrp.AssemblyAngularVelocity = Vector3.zero
+                    end
+
+                    task.wait(0.05)
+                end
+
+                break
+            else
+                local eggPos = GetTargetPosition(targetUid)
+                if eggPos then
+                    TravelTo(eggPos.Position, CONFIG.travelSpeed)
+                    task.wait(0.3)
+
+                    CarryEgg(finalTarget)
+                    task.wait(0.2)
+                end
+
+                AscendInstant(CONFIG.flyHeight)
+                local nowPos = findHRP() and findHRP().Position or KIDO_HUB_POS
+                local hubHigh = Vector3.new(KIDO_HUB_POS.X, nowPos.Y, KIDO_HUB_POS.Z)
+                TravelTo(hubHigh, CONFIG.travelSpeed)
+                TravelTo(KIDO_HUB_POS + Vector3.new(0, 3, 0), CONFIG.travelSpeed)
+
+                task.wait(0.3)
+            end
+        end
+
+        if kidoHubAttempts >= CONFIG.kidoHubMaxRetries then
+            TAKEN_EGGS[targetUid] = true
+            if listRows[targetUid] then
+                listRows[targetUid]:Destroy()
+                listRows[targetUid] = nil
+            end
+
+            CONFIG.isStealing = false
+            StopAuto()
+            return false
+        end
+
+        local partWaitStart = os.clock()
+        while (os.clock() - partWaitStart) < CONFIG.partWaitTime do
+            if not CONFIG.autoLoop then
+                CONFIG.isStealing = false
+                return false
+            end
+
+            local hrp = findHRP()
+            if hrp then
+                hrp.CFrame = CFrame.new(KIDO_HUB_POS + Vector3.new(0, 3, 0))
+                hrp.AssemblyLinearVelocity = Vector3.zero
+                hrp.AssemblyAngularVelocity = Vector3.zero
+            end
+
+            task.wait(0.05)
+        end
+
+        -- PART-3
+        TravelTo(PART3_POS + Vector3.new(0, 5, 0), CONFIG.travelSpeed)
+        task.wait(CONFIG.partTravelWait)
+        local hrpP3 = findHRP()
+        if hrpP3 then
+            hrpP3.CFrame = CFrame.new(PART3_POS + Vector3.new(0, 5, 0))
+            hrpP3.AssemblyLinearVelocity = Vector3.zero
+            hrpP3.AssemblyAngularVelocity = Vector3.zero
+        end
+        task.wait(CONFIG.partTravelWait)
+
+        -- PART-1
+        TravelTo(PART1_POS + Vector3.new(0, 5, 0), CONFIG.travelSpeed)
+        task.wait(CONFIG.partTravelWait)
+        local hrpP1 = findHRP()
+        if hrpP1 then
+            hrpP1.CFrame = CFrame.new(PART1_POS + Vector3.new(0, 5, 0))
+            hrpP1.AssemblyLinearVelocity = Vector3.zero
+            hrpP1.AssemblyAngularVelocity = Vector3.zero
+        end
+        task.wait(CONFIG.partTravelWait)
+
+        -- PART-2
+        TravelTo(PART2_POS + Vector3.new(0, 5, 0), CONFIG.travelSpeed)
+        task.wait(CONFIG.partTravelWait)
+        local hrpP2 = findHRP()
+        if hrpP2 then
+            hrpP2.CFrame = CFrame.new(PART2_POS + Vector3.new(0, 5, 0))
+            hrpP2.AssemblyLinearVelocity = Vector3.zero
+            hrpP2.AssemblyAngularVelocity = Vector3.zero
+        end
+        task.wait(CONFIG.partFinalWait)
+
+        CONFIG.isStealing = false
+        return true
+    end
+
+    CONFIG.isStealing = false
+    return false
+end
+
+-- ==============================================================================
+-- MAIN UI
+-- ==============================================================================
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 340, 0, 540)
+MainFrame.Position = UDim2.new(0.5, -170, 0.5, -270)
+MainFrame.BackgroundColor3 = Color3.fromRGB(15, 12, 20)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.ZIndex = 50
+MainFrame.Parent = ScreenGui
+
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 16)
+MainCorner.Parent = MainFrame
+
+local MainStroke = Instance.new("UIStroke")
+MainStroke.Color = Color3.fromRGB(255, 80, 80)
+MainStroke.Thickness = 2
+MainStroke.Parent = MainFrame
+
+local Header = Instance.new("Frame")
+Header.Size = UDim2.new(1, 0, 0, 70)
+Header.BackgroundTransparency = 1
+Header.ZIndex = 51
+Header.Parent = MainFrame
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 32)
+Title.Position = UDim2.new(0, 0, 0, 12)
+Title.BackgroundTransparency = 1
+Title.Text = "Kido Hub"
+Title.TextColor3 = Color3.fromRGB(255, 60, 60)
+Title.Font = Enum.Font.GothamBlack
+Title.TextSize = 24
+Title.ZIndex = 52
+Title.Parent = Header
+
+local Subtitle = Instance.new("TextLabel")
+Subtitle.Size = UDim2.new(1, 0, 0, 16)
+Subtitle.Position = UDim2.new(0, 0, 0, 42)
+Subtitle.BackgroundTransparency = 1
+Subtitle.Text = "https://discord.gg/zmKkWjd3U"
+Subtitle.TextColor3 = Color3.fromRGB(120, 120, 140)
+Subtitle.Font = Enum.Font.Gotham
+Subtitle.TextSize = 11
+Subtitle.ZIndex = 52
+Subtitle.Parent = Header
+
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 28, 0, 28)
+CloseBtn.Position = UDim2.new(1, -36, 0, 12)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
+CloseBtn.Text = "×"
+CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextSize = 18
+CloseBtn.ZIndex = 60
+CloseBtn.Parent = MainFrame
+
+local CloseCorner = Instance.new("UICorner")
+CloseCorner.CornerRadius = UDim.new(0, 8)
+CloseCorner.Parent = CloseBtn
+
+local ScrollList = Instance.new("ScrollingFrame")
+ScrollList.Size = UDim2.new(1, -24, 0, 360)
+ScrollList.Position = UDim2.new(0, 12, 0, 88)
+ScrollList.BackgroundColor3 = Color3.fromRGB(10, 8, 15)
+ScrollList.BorderSizePixel = 0
+ScrollList.ScrollBarThickness = 4
+ScrollList.ScrollBarImageColor3 = Color3.fromRGB(255, 60, 60)
+ScrollList.CanvasSize = UDim2.new(0, 0, 0, 0)
+ScrollList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+ScrollList.ZIndex = 51
+ScrollList.Parent = MainFrame
+
+local ScrollCorner = Instance.new("UICorner")
+ScrollCorner.CornerRadius = UDim.new(0, 12)
+ScrollCorner.Parent = ScrollList
+
+local ListLayout = Instance.new("UIListLayout")
+ListLayout.Padding = UDim.new(0, 6)
+ListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ListLayout.Parent = ScrollList
+
+local ListPadding = Instance.new("UIPadding")
+ListPadding.PaddingTop = UDim.new(0, 8)
+ListPadding.PaddingLeft = UDim.new(0, 8)
+ListPadding.PaddingRight = UDim.new(0, 8)
+ListPadding.PaddingBottom = UDim.new(0, 8)
+ListPadding.Parent = ScrollList
+
+local function HighlightSelected(uid)
+    for k, row in pairs(listRows) do
+        local btn = row:FindFirstChild("RowButton")
+        if btn then
+            if k == uid then
+                btn.BackgroundColor3 = Color3.fromRGB(40, 20, 60)
+            else
+                btn.BackgroundColor3 = Color3.fromRGB(20, 18, 28)
+            end
+        end
+    end
+end
+
+SelectedLabel = Instance.new("TextLabel")
+SelectedLabel.Size = UDim2.new(1, -24, 0, 20)
+SelectedLabel.Position = UDim2.new(0, 12, 0, 454)
+SelectedLabel.BackgroundTransparency = 1
+SelectedLabel.Text = "🎯 BEST EGG (auto)"
+SelectedLabel.TextColor3 = Color3.fromRGB(255, 200, 80)
+SelectedLabel.Font = Enum.Font.GothamBold
+SelectedLabel.TextSize = 12
+SelectedLabel.TextXAlignment = Enum.TextXAlignment.Left
+SelectedLabel.ZIndex = 52
+SelectedLabel.Parent = MainFrame
+
+CreateEggRow = function(entry, order)
+    local egg = entry.record
+    local row = Instance.new("Frame")
+    row.Name = "Row_" .. egg.Uid
+    row.Size = UDim2.new(1, 0, 0, 62)
+    row.BackgroundTransparency = 1
+    row.LayoutOrder = order
+    row.ZIndex = 52
+    row.Parent = ScrollList
+
+    local btn = Instance.new("TextButton")
+    btn.Name = "RowButton"
+    btn.Size = UDim2.new(1, 0, 1, 0)
+    btn.BackgroundColor3 = Color3.fromRGB(20, 18, 28)
+    btn.Text = ""
+    btn.AutoButtonColor = false
+    btn.ZIndex = 53
+    btn.Parent = row
+
+    local btnCorner = Instance.new("UICorner")
+    btnCorner.CornerRadius = UDim.new(0, 10)
+    btnCorner.Parent = btn
+
+    local btnStroke = Instance.new("UIStroke")
+    btnStroke.Color = Color3.fromRGB(40, 35, 55)
+    btnStroke.Thickness = 1
+    btnStroke.Parent = btn
+
+    local thumbFrame = Instance.new("Frame")
+    thumbFrame.Size = UDim2.new(0, 50, 0, 50)
+    thumbFrame.Position = UDim2.new(0, 6, 0.5, -25)
+    thumbFrame.BackgroundColor3 = Color3.fromRGB(30, 25, 40)
+    thumbFrame.ZIndex = 54
+    thumbFrame.Parent = btn
+
+    local thumbCorner = Instance.new("UICorner")
+    thumbCorner.CornerRadius = UDim.new(0, 8)
+    thumbCorner.Parent = thumbFrame
+
+    local thumbImg = Instance.new("ImageLabel")
+    thumbImg.Size = UDim2.new(1, -4, 1, -4)
+    thumbImg.Position = UDim2.new(0, 2, 0, 2)
+    thumbImg.BackgroundTransparency = 1
+    thumbImg.Image = entry.thumb or ""
+    thumbImg.ZIndex = 55
+    thumbImg.Parent = thumbFrame
+
+    local nameLbl = Instance.new("TextLabel")
+    nameLbl.Size = UDim2.new(0, 180, 0, 20)
+    nameLbl.Position = UDim2.new(0, 64, 0, 10)
+    nameLbl.BackgroundTransparency = 1
+    nameLbl.Text = egg.AssetCategory or "Egg"
+    nameLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+    nameLbl.Font = Enum.Font.GothamBold
+    nameLbl.TextSize = 13
+    nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+    nameLbl.TextTruncate = Enum.TextTruncate.AtEnd
+    nameLbl.ZIndex = 54
+    nameLbl.Parent = btn
+
+    local rarityLbl = Instance.new("TextLabel")
+    rarityLbl.Size = UDim2.new(0, 180, 0, 16)
+    rarityLbl.Position = UDim2.new(0, 64, 0, 32)
+    rarityLbl.BackgroundTransparency = 1
+    rarityLbl.Text = tostring(entry.rarity)
+    rarityLbl.TextColor3 = RARITY_COLORS[tostring(entry.rarity)] or Color3.fromRGB(180, 180, 200)
+    rarityLbl.Font = Enum.Font.Gotham
+    rarityLbl.TextSize = 11
+    rarityLbl.TextXAlignment = Enum.TextXAlignment.Left
+    rarityLbl.ZIndex = 54
+    rarityLbl.Parent = btn
+
+    local sizeLbl = Instance.new("TextLabel")
+    sizeLbl.Size = UDim2.new(0, 70, 0, 20)
+    sizeLbl.Position = UDim2.new(1, -80, 0, 10)
+    sizeLbl.BackgroundTransparency = 1
+    sizeLbl.Text = FormatSize(entry.size)
+    sizeLbl.TextColor3 = Color3.fromRGB(80, 220, 120)
+    sizeLbl.Font = Enum.Font.GothamBold
+    sizeLbl.TextSize = 13
+    sizeLbl.TextXAlignment = Enum.TextXAlignment.Right
+    sizeLbl.ZIndex = 54
+    sizeLbl.Parent = btn
+
+    btn.MouseButton1Click:Connect(function()
+        SELECTED_TARGET = {
+            record = egg,
+            label = (egg.AssetCategory or "Egg"),
+            entry = entry,
+            uid = egg.Uid,
+            lastCFrame = entry.lastCFrame,
+            savedAt = os.clock(),
+        }
+        LAST_TARGET_UID = egg.Uid
+        HighlightSelected(egg.Uid)
+        if SelectedLabel then
+            SelectedLabel.Text = "🎯 " .. (egg.AssetCategory or "Egg")
+        end
+
+        if CONFIG.autoLoop then
+            if STEAL_THREAD then
+                pcall(function() task.cancel(STEAL_THREAD) end)
+            end
+            STEAL_THREAD = task.spawn(function()
+                while CONFIG.autoLoop do
+                    local ok, result = pcall(StealBestEgg)
+                    if not CONFIG.autoLoop then break end
+                    task.wait(0.1)
+                end
+            end)
+        end
+    end)
+
+    return row
+end
+
+local function BuildList()
+    local sorted = GetSortedEggs()
+
+    for order, entry in ipairs(sorted) do
+        local uid = entry.record.Uid
+        if not listRows[uid] or not listRows[uid].Parent then
+            local row = CreateEggRow(entry, order)
+            listRows[uid] = row
+        else
+            listRows[uid].LayoutOrder = order
+        end
+    end
+
+    for uid, row in pairs(listRows) do
+        if not TAKEN_EGGS[uid] then
+            local stillThere = false
+            for _, entry in ipairs(sorted) do
+                if entry.record.Uid == uid then
+                    stillThere = true
+                    break
+                end
+            end
+            if not stillThere then
+                row:Destroy()
+                listRows[uid] = nil
+            end
+        else
+            row:Destroy()
+            listRows[uid] = nil
+        end
+    end
+end
+
+task.spawn(function()
+    while ScreenGui.Parent do
+        pcall(BuildList)
+        task.wait(1)
+    end
+end)
+
+task.spawn(function()
+    while ScreenGui.Parent do
+        task.wait(CONFIG.autoRemoveCheck)
+        pcall(function()
+            for uid, entry in pairs(EGG_CACHE) do
+                if TAKEN_EGGS[uid] then continue end
+
+                local fresh = FindEggByUid(uid)
+
+                if not fresh then
+                    TAKEN_EGGS[uid] = true
+
+                    if listRows[uid] then
+                        listRows[uid]:Destroy()
+                        listRows[uid] = nil
+                    end
+                end
+            end
+        end)
+    end
+end)
+
+GoBtn = Instance.new("TextButton")
+GoBtn.Size = UDim2.new(0.62, -18, 0, 45)
+GoBtn.Position = UDim2.new(0, 12, 1, -57)
+GoBtn.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
+GoBtn.Text = "GO"
+GoBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+GoBtn.Font = Enum.Font.GothamBlack
+GoBtn.TextSize = 18
+GoBtn.ZIndex = 60
+GoBtn.Parent = MainFrame
+
+local GoCorner = Instance.new("UICorner")
+GoCorner.CornerRadius = UDim.new(0, 10)
+GoCorner.Parent = GoBtn
+
+StopBtn = Instance.new("TextButton")
+StopBtn.Size = UDim2.new(0.38, -18, 0, 45)
+StopBtn.Position = UDim2.new(0.62, 6, 1, -57)
+StopBtn.BackgroundColor3 = Color3.fromRGB(40, 20, 30)
+StopBtn.Text = "STOP"
+StopBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+StopBtn.Font = Enum.Font.GothamBlack
+StopBtn.TextSize = 16
+StopBtn.ZIndex = 60
+StopBtn.Parent = MainFrame
+
+local StopCorner = Instance.new("UICorner")
+StopCorner.CornerRadius = UDim.new(0, 10)
+StopCorner.Parent = StopBtn
+
+local StopStroke = Instance.new("UIStroke")
+StopStroke.Color = Color3.fromRGB(255, 60, 60)
+StopStroke.Thickness = 1
+StopStroke.Parent = StopBtn
+
+GoBtn.MouseButton1Click:Connect(function()
+    local char = LP.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health <= 0 then return end
+
+    if not HUMAN_RENAMED then
+        local ok = ApplyHumanoidRename()
+        if not ok then return end
+    end
+
+    SCRIPT_ACTIVE = true
+    if STEAL_THREAD then
+        pcall(function() task.cancel(STEAL_THREAD) end)
+        STEAL_THREAD = nil
+    end
+
+    local targetEntry = nil
+    if SELECTED_TARGET and SELECTED_TARGET.record then
+        targetEntry = SELECTED_TARGET.entry or { record = SELECTED_TARGET.record }
+    else
+        local sorted = GetSortedEggs()
+        if #sorted > 0 then targetEntry = sorted[1] end
+    end
+
+    if targetEntry then ShowTargetPanel(targetEntry) end
+
+    CONFIG.autoLoop = true
+    CONFIG.isStealing = false
+
+    GoBtn.BackgroundColor3 = Color3.fromRGB(80, 200, 100)
+    GoBtn.Text = "RUNNING..."
+
+    STEAL_THREAD = task.spawn(function()
+        while CONFIG.autoLoop do
+            local c = LP.Character
+            if not c or not c:FindFirstChildOfClass("Humanoid") or c:FindFirstChildOfClass("Humanoid").Health <= 0 then
+                StopAuto()
+                break
+            end
+
+            local ok, result = pcall(StealBestEgg)
+            if not CONFIG.autoLoop then break end
+            task.wait(0.1)
+        end
+    end)
+end)
+
+StopBtn.MouseButton1Click:Connect(function()
+    StopAuto()
+end)
+
+GoBtn.MouseEnter:Connect(function()
+    if not CONFIG.autoLoop then
+        TweenService:Create(GoBtn, TweenInfo.new(0.15), {
+            BackgroundColor3 = Color3.fromRGB(255, 90, 90)
+        }):Play()
+    end
+end)
+
+GoBtn.MouseLeave:Connect(function()
+    if not CONFIG.autoLoop then
+        TweenService:Create(GoBtn, TweenInfo.new(0.15), {
+            BackgroundColor3 = Color3.fromRGB(255, 60, 60)
+        }):Play()
+    end
+end)
+
+-- ==============================================================================
+-- ✅ DRAGGABLE ROUND RED "K" BUTTON
+-- ==============================================================================
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Name = "ToggleBtn"
+ToggleBtn.Size = UDim2.new(0, 50, 0, 50)
+ToggleBtn.AnchorPoint = Vector2.new(1, 1)
+ToggleBtn.Position = UDim2.new(1, -70, 1, -120)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(255, 40, 40)
+ToggleBtn.Text = "K"
+ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleBtn.Font = Enum.Font.GothamBlack
+ToggleBtn.TextSize = 22
+ToggleBtn.AutoButtonColor = false
+ToggleBtn.Active = true
+ToggleBtn.ZIndex = 1000
+ToggleBtn.Parent = ScreenGui
+ToggleBtn.Visible = false
+
+local ToggleCorner = Instance.new("UICorner")
+ToggleCorner.CornerRadius = UDim.new(1, 0)
+ToggleCorner.Parent = ToggleBtn
+
+local ToggleStroke = Instance.new("UIStroke")
+ToggleStroke.Color = Color3.fromRGB(255, 255, 255)
+ToggleStroke.Thickness = 2
+ToggleStroke.Parent = ToggleBtn
+
+-- ==============================================================================
+-- ✅ DRAG FUNCTIONALITY
+-- ==============================================================================
+local dragging = false
+local dragStart = nil
+local startPos = nil
+local moved = false
+local DRAG_THRESHOLD = 5
+
+local UI_HIDDEN = false
+
+ToggleBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+       or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        moved = false
+        dragStart = input.Position
+        startPos = ToggleBtn.Position
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if not dragging then return end
+    if input.UserInputType == Enum.UserInputType.MouseMovement
+       or input.UserInputType == Enum.UserInputType.Touch then
+        local delta = input.Position - dragStart
+        if math.abs(delta.X) > DRAG_THRESHOLD or math.abs(delta.Y) > DRAG_THRESHOLD then
+            moved = true
+        end
+        if moved then
+            ToggleBtn.Position = UDim2.new(
+                startPos.X.Scale,
+                startPos.X.Offset + delta.X,
+                startPos.Y.Scale,
+                startPos.Y.Offset + delta.Y
+            )
+        end
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+       or input.UserInputType == Enum.UserInputType.Touch then
+        if dragging then
+            dragging = false
+            if not moved then
+                UI_HIDDEN = not UI_HIDDEN
+                MainFrame.Visible = not UI_HIDDEN
+                ToggleBtn.Text = UI_HIDDEN and "K" or "×"
+            end
+        end
+    end
+end)
+
+-- ==============================================================================
+-- ✅ TOGGLE / CLOSE LOGIC
+-- ==============================================================================
+CloseBtn.MouseButton1Click:Connect(function()
+    StopAuto()
+    MainFrame.Visible = false
+    ToggleBtn.Visible = true
+    UI_HIDDEN = true
+    ToggleBtn.Text = "K"
+end)
+
+MainFrame:GetPropertyChangedSignal("Visible"):Connect(function()
+    if MainFrame.Visible then
+        ToggleBtn.Visible = false
+    else
+        ToggleBtn.Visible = true
+    end
+end)
